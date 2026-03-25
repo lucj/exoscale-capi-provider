@@ -190,6 +190,29 @@ func (c *Client) GetElasticIP(ctx context.Context, id string) (string, bool, err
 	return eip.IP, true, nil
 }
 
+// AttachElasticIPToInstance associates an Elastic IP with a compute instance so
+// that inbound traffic to the EIP is routed to that instance.  The call is
+// idempotent: if the EIP is already attached to the given instance the
+// operation succeeds without error.
+func (c *Client) AttachElasticIPToInstance(ctx context.Context, instanceID, eipID string) error {
+	instanceUID, err := v3.ParseUUID(instanceID)
+	if err != nil {
+		return fmt.Errorf("parsing instance UUID %q: %w", instanceID, err)
+	}
+	eipUID, err := v3.ParseUUID(eipID)
+	if err != nil {
+		return fmt.Errorf("parsing EIP UUID %q: %w", eipID, err)
+	}
+	op, err := c.client.AttachInstanceElasticIP(ctx, instanceUID, v3.AttachInstanceElasticIPRequest{
+		ElasticIP: v3.ElasticIP{ID: eipUID},
+	})
+	if err != nil {
+		return fmt.Errorf("attaching EIP %s to instance %s: %w", eipID, instanceID, err)
+	}
+	_, err = c.wait(ctx, op)
+	return err
+}
+
 // DeleteElasticIP releases an Elastic IP by ID.  Not-found errors are silently
 // ignored.
 func (c *Client) DeleteElasticIP(ctx context.Context, id string) error {
@@ -220,6 +243,10 @@ type CreateInstanceParams struct {
 	SecurityGroupIDs  []string
 	AntiAffinityGroup string // name or UUID; empty to skip
 	EnableIPv6        bool
+	// UserData is the base64-encoded cloud-init payload injected at boot time.
+	// The caller is responsible for base64-encoding the raw script before setting
+	// this field, as the Exoscale API expects the encoded form directly.
+	UserData string
 }
 
 // InstanceInfo holds the observed state of a compute instance.
@@ -271,6 +298,10 @@ func (c *Client) CreateInstance(ctx context.Context, params CreateInstanceParams
 
 	if params.EnableIPv6 {
 		req.PublicIPAssignment = v3.PublicIPAssignmentDual
+	}
+
+	if params.UserData != "" {
+		req.UserData = params.UserData
 	}
 
 	op, err := c.client.CreateInstance(ctx, req)

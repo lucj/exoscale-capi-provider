@@ -83,10 +83,14 @@ func (r *ExoscaleClusterReconciler) reconcileNormal(ctx context.Context, cluster
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
+	endpoint := clusterv1.APIEndpoint{
 		Host: cluster.Status.EIPAddress,
 		Port: 6443,
 	}
+	// Set on both Spec (required by CAPI core to discover the endpoint) and
+	// Status (mirrors the value for observability).
+	cluster.Spec.ControlPlaneEndpoint = endpoint
+	cluster.Status.ControlPlaneEndpoint = endpoint
 
 	setCondition(cluster, infrav1.SecurityGroupsReadyCondition, corev1.ConditionTrue, "Ready", "Security groups are ready")
 	setCondition(cluster, infrav1.EIPReadyCondition, corev1.ConditionTrue, "Ready", "Elastic IP is ready")
@@ -100,12 +104,22 @@ func (r *ExoscaleClusterReconciler) reconcileNormal(ctx context.Context, cluster
 func (r *ExoscaleClusterReconciler) reconcileSecurityGroups(ctx context.Context, cluster *infrav1.ExoscaleCluster, cc *cloud.Client) error {
 	log := logf.FromContext(ctx)
 
+	// Minimum ingress rules required for a functional Kubernetes cluster.
+	// For production clusters, restrict etcd and kubelet ports to internal CIDRs
+	// by adding more specific rules or by using Exoscale security-group references
+	// as source (configurable outside this controller via the Exoscale portal).
 	masterRules := []cloud.IngressRule{
-		{Protocol: "tcp", StartPort: 22, EndPort: 22, Network: "0.0.0.0/0"},      // SSH
-		{Protocol: "tcp", StartPort: 6443, EndPort: 6443, Network: "0.0.0.0/0"},  // kube-apiserver
+		{Protocol: "tcp", StartPort: 22, EndPort: 22, Network: "0.0.0.0/0"},        // SSH
+		{Protocol: "tcp", StartPort: 6443, EndPort: 6443, Network: "0.0.0.0/0"},    // kube-apiserver
+		{Protocol: "tcp", StartPort: 2379, EndPort: 2380, Network: "0.0.0.0/0"},    // etcd server + peer
+		{Protocol: "tcp", StartPort: 10250, EndPort: 10250, Network: "0.0.0.0/0"},  // kubelet API
+		{Protocol: "tcp", StartPort: 10257, EndPort: 10257, Network: "0.0.0.0/0"},  // kube-controller-manager
+		{Protocol: "tcp", StartPort: 10259, EndPort: 10259, Network: "0.0.0.0/0"},  // kube-scheduler
 	}
 	nodeRules := []cloud.IngressRule{
-		{Protocol: "tcp", StartPort: 22, EndPort: 22, Network: "0.0.0.0/0"},      // SSH
+		{Protocol: "tcp", StartPort: 22, EndPort: 22, Network: "0.0.0.0/0"},          // SSH
+		{Protocol: "tcp", StartPort: 10250, EndPort: 10250, Network: "0.0.0.0/0"},    // kubelet API
+		{Protocol: "tcp", StartPort: 30000, EndPort: 32767, Network: "0.0.0.0/0"},    // NodePort services
 	}
 
 	masterName := cluster.Spec.MasterSecurityGroup

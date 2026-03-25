@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -97,6 +98,25 @@ func (r *ExoscaleMachineReconciler) reconcileNormal(
 
 	// Create instance if not yet provisioned.
 	if exoscaleMachine.Status.InstanceID == "" {
+		// Per CAPI contract: the bootstrap provider sets DataSecretName once the
+		// cloud-init payload is ready.  Block until that happens so that the
+		// instance is launched with the correct initialisation script.
+		if machine.Spec.Bootstrap.DataSecretName == nil {
+			log.Info("Bootstrap data not yet available, requeueing")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
+		// Read the cloud-init user-data written by the bootstrap provider.
+		bootstrapSecret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{
+			Namespace: exoscaleMachine.Namespace,
+			Name:      *machine.Spec.Bootstrap.DataSecretName,
+		}, bootstrapSecret); err != nil {
+			return ctrl.Result{}, fmt.Errorf("getting bootstrap secret %q: %w", *machine.Spec.Bootstrap.DataSecretName, err)
+		}
+		// Exoscale expects the user-data as a base64-encoded string.
+		userData := base64.StdEncoding.EncodeToString(bootstrapSecret.Data["value"])
+
 		var sgIDs []string
 		if _, isCP := machine.Labels[machineControlPlaneLabel]; isCP {
 			sgIDs = []string{exoscaleCluster.Status.MasterSecurityGroupID}
@@ -113,6 +133,7 @@ func (r *ExoscaleMachineReconciler) reconcileNormal(
 			SecurityGroupIDs:  sgIDs,
 			AntiAffinityGroup: exoscaleMachine.Spec.AntiAffinityGroup,
 			EnableIPv6:        exoscaleMachine.Spec.IPv6,
+			UserData:          userData,
 		})
 		if err != nil {
 			setCondition(exoscaleMachine, infrav1.InstanceReadyCondition, corev1.ConditionFalse, "CreateFailed", err.Error())
@@ -154,6 +175,22 @@ func (r *ExoscaleMachineReconciler) reconcileNormal(
 	exoscaleMachine.Spec.ProviderID = &providerID
 
 	if info.State == "running" {
+		// For control-plane machines, attach the cluster Elastic IP so that the
+		// announced ControlPlaneEndpoint (the EIP address) actually routes to this
+		// instance.  The call is idempotent — re-attaching to the same instance is
+		// a no-op, and in a single-master scenario it only needs to succeed once.
+		if _, isCP := machine.Labels[machineControlPlaneLabel]; isCP && exoscaleCluster.Status.EIPID != "" {
+			if err := cc.AttachElasticIPToInstance(ctx, exoscaleMachine.Status.InstanceID, exoscaleCluster.Status.EIPID); err != nil {
+				// Log but do not hard-fail: the EIP may already be attached from a
+				// previous reconcile loop that was interrupted before updating status.
+				log.Error(err, "Failed to attach EIP to control-plane instance")
+			} else {
+				log.Info("Elastic IP attached to control-plane instance",
+					"instanceID", exoscaleMachine.Status.InstanceID,
+					"eipID", exoscaleCluster.Status.EIPID)
+			}
+		}
+
 		exoscaleMachine.Status.Ready = true
 		setCondition(exoscaleMachine, infrav1.InstanceReadyCondition, corev1.ConditionTrue, "InstanceReady", "Instance is running")
 		return ctrl.Result{}, nil

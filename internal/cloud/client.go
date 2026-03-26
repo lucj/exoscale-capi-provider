@@ -203,8 +203,10 @@ func (c *Client) AttachElasticIPToInstance(ctx context.Context, instanceID, eipI
 	if err != nil {
 		return fmt.Errorf("parsing EIP UUID %q: %w", eipID, err)
 	}
-	op, err := c.client.AttachInstanceElasticIP(ctx, instanceUID, v3.AttachInstanceElasticIPRequest{
-		ElasticIP: v3.ElasticIP{ID: eipUID},
+	// The v3 API is EIP-centric: you call AttachInstanceToElasticIP on the EIP
+	// and pass the instance in the request body.
+	op, err := c.client.AttachInstanceToElasticIP(ctx, eipUID, v3.AttachInstanceToElasticIPRequest{
+		Instance: v3.Instance{ID: instanceUID},
 	})
 	if err != nil {
 		return fmt.Errorf("attaching EIP %s to instance %s: %w", eipID, instanceID, err)

@@ -46,7 +46,16 @@ clusterctl init --bootstrap kubeadm --control-plane kubeadm
 kubectl get pods -A | grep capi  # wait until all Running
 ```
 
-### 2 — Deploy the Exoscale provider
+### 2 — Add Exoscale credentials
+
+```bash
+kubectl create secret generic exoscale-credentials \
+  --from-literal=EXOSCALE_API_KEY=$EXOSCALE_API_KEY$ \
+  --from-literal=EXOSCALE_API_SECRET=$EXOSCALE_API_SECRET$ \
+  -n cluster-api-provider-exoscale-system
+```
+
+### 3 — Deploy the Exoscale provider
 
 The image is published to GHCR automatically on every push to `main`. Open `config/default/kustomization.yaml` and replace the `newName` / `newTag` fields with your image reference, then apply:
 
@@ -63,135 +72,12 @@ kubectl apply -k config/default
 kubectl get pods -n cluster-api-provider-exoscale-system  # wait until Running
 ```
 
-### 3 — Add Exoscale credentials
-
-```bash
-kubectl create secret generic exoscale-credentials \
-  --from-literal=EXOSCALE_API_KEY=$EXOSCALE_API_KEY$ \
-  --from-literal=EXOSCALE_API_SECRET=$EXOSCALE_API_SECRET$ \
-  -n cluster-api-provider-exoscale-system
-```
-
 ### 4 — Create a workload cluster
 
-Save the manifest below as `my-cluster.yaml`, replacing `ch-gva-2` and `my-ssh-key` with your values, then apply it.
-
-```yaml
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
-metadata:
-  name: my-cluster
-  namespace: default
-spec:
-  clusterNetwork:
-    pods:      { cidrBlocks: ["10.244.0.0/16"] }
-    services:  { cidrBlocks: ["10.96.0.0/12"] }
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: ExoscaleCluster
-    name: my-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-    kind: KubeadmControlPlane
-    name: my-cluster-control-plane
----
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: ExoscaleCluster
-metadata:
-  name: my-cluster
-  namespace: default
-spec:
-  zone: ch-gva-2
----
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: ExoscaleMachineTemplate
-metadata:
-  name: my-cluster-control-plane
-  namespace: default
-spec:
-  template:
-    spec:
-      zone: ch-gva-2
-      instanceType: standard.medium   # 2 vCPU / 4 GB — minimum for control plane
-      template: "Linux Ubuntu 22.04 LTS 64-bit"
-      diskSize: 50
-      sshKey: my-ssh-key
----
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-kind: KubeadmControlPlane
-metadata:
-  name: my-cluster-control-plane
-  namespace: default
-spec:
-  replicas: 1
-  version: v1.28.0
-  machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: ExoscaleMachineTemplate
-      name: my-cluster-control-plane
-  kubeadmConfigSpec:
-    initConfiguration:
-      nodeRegistration:
-        kubeletExtraArgs: { cloud-provider: external }
-    joinConfiguration:
-      nodeRegistration:
-        kubeletExtraArgs: { cloud-provider: external }
----
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: ExoscaleMachineTemplate
-metadata:
-  name: my-cluster-workers
-  namespace: default
-spec:
-  template:
-    spec:
-      zone: ch-gva-2
-      instanceType: standard.medium
-      template: "Linux Ubuntu 22.04 LTS 64-bit"
-      diskSize: 50
-      sshKey: my-ssh-key
----
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-kind: KubeadmConfigTemplate
-metadata:
-  name: my-cluster-workers
-  namespace: default
-spec:
-  template:
-    spec:
-      joinConfiguration:
-        nodeRegistration:
-          kubeletExtraArgs: { cloud-provider: external }
----
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: MachineDeployment
-metadata:
-  name: my-cluster-workers
-  namespace: default
-spec:
-  clusterName: my-cluster
-  replicas: 2
-  selector:
-    matchLabels:
-      cluster.x-k8s.io/cluster-name: my-cluster
-  template:
-    spec:
-      clusterName: my-cluster
-      version: v1.28.0
-      bootstrap:
-        configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-          kind: KubeadmConfigTemplate
-          name: my-cluster-workers
-      infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        kind: ExoscaleMachineTemplate
-        name: my-cluster-workers
-```
+Modify the manifest in `examples/my-cluster.yaml`, replacing `SSH_KEY_ID` with your values, then apply it.
 
 ```bash
-kubectl apply -f my-cluster.yaml
+kubectl apply -f examples/my-cluster.yaml
 ```
 
 ### 5 — Watch provisioning (~5–10 min)

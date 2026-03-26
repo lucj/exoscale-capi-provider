@@ -22,7 +22,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
         - name: manager
-          image: controller:latest  # replaced by kustomize image override
+          image: ghcr.io/lucj/exoscale-capi-provider # replaced by kustomize image override
           command: ["/manager"]
           envFrom:
             - secretRef:

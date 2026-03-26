@@ -3,11 +3,11 @@ namespace: cluster-api-provider-exoscale-system
 namePrefix: cluster-api-provider-exoscale-
 
 resources:
-  - ../crd/bases
+  # - ../crd/bases
   - ../rbac
   - ../manager
 
-images:
-  - name: controller:latest
-    newName: ghcr.io/lucj/cluster-api-provider-exoscale  # overridden by make deploy IMG=...
-    newTag: latest
+#images:
+#  - name: controller:latest
+#    newName: ghcr.io/lucj/exoscale-capi-provider  # overridden by make deploy IMG=...
+#    newTag: latest

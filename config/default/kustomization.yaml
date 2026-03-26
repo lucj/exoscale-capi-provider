@@ -1,0 +1,13 @@
+namespace: cluster-api-provider-exoscale-system
+
+namePrefix: cluster-api-provider-exoscale-
+
+resources:
+  - ../crd/bases
+  - ../rbac
+  - ../manager
+
+images:
+  - name: controller:latest
+    newName: ghcr.io/YOUR_ORG/cluster-api-provider-exoscale  # overridden by make deploy IMG=...
+    newTag: latest

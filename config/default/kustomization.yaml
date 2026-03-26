@@ -9,5 +9,5 @@ resources:
 
 images:
   - name: controller:latest
-    newName: ghcr.io/YOUR_ORG/cluster-api-provider-exoscale  # overridden by make deploy IMG=...
+    newName: ghcr.io/lucj/cluster-api-provider-exoscale  # overridden by make deploy IMG=...
     newTag: latest

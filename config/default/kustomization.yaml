@@ -7,7 +7,7 @@ resources:
   - ../rbac
   - ../manager
 
-#images:
-#  - name: controller:latest
-#    newName: ghcr.io/lucj/exoscale-capi-provider  # overridden by make deploy IMG=...
-#    newTag: latest
+images:
+  - name: controller:latest
+    newName: ghcr.io/lucj/exoscale-capi-provider  # overridden by make deploy IMG=...
+    newTag: latest

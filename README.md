@@ -36,8 +36,7 @@ Because this provider is not published to the clusterctl registry, the kubeadm p
 ### Prerequisites
 
 - A running Kubernetes cluster to use as the management cluster, with `kubectl` pointing to it
-- [clusterctl](https://cluster-api.sigs.k8s.io/user/quick-start.html#install-clusterctl) v1.7+
-- [kustomize](https://kustomize.io/)
+- [clusterctl](https://cluster-api.sigs.k8s.io/user/quick-start.html#install-clusterctl)
 - An Exoscale account with an API key/secret and an SSH key uploaded in the target zone
 
 ### 1 — Install CAPI core + kubeadm providers
@@ -49,11 +48,17 @@ kubectl get pods -A | grep capi  # wait until all Running
 
 ### 2 — Deploy the Exoscale provider
 
-The image is published to GHCR automatically on every push to `main`. Replace `<owner>` with the GitHub organisation or username that hosts this repo:
+The image is published to GHCR automatically on every push to `main`. Open `config/default/kustomization.yaml` and replace the `newName` / `newTag` fields with your image reference, then apply:
+
+```yaml
+# config/default/kustomization.yaml  (edit before applying)
+images:
+  - name: controller
+    newName: ghcr.io/<owner>/cluster-api-provider-exoscale
+    newTag: latest
+```
 
 ```bash
-kustomize edit set image controller:latest=ghcr.io/<owner>/cluster-api-provider-exoscale:latest \
-  --kustomization-file config/default/kustomization.yaml
 kubectl apply -k config/default
 kubectl get pods -n cluster-api-provider-exoscale-system  # wait until Running
 ```
@@ -62,8 +67,8 @@ kubectl get pods -n cluster-api-provider-exoscale-system  # wait until Running
 
 ```bash
 kubectl create secret generic exoscale-credentials \
-  --from-literal=EXOSCALE_API_KEY=EXOxxxxxxxxxxxxxxxxxxxxxxxx \
-  --from-literal=EXOSCALE_API_SECRET=your-api-secret \
+  --from-literal=EXOSCALE_API_KEY=$EXOSCALE_API_KEY$ \
+  --from-literal=EXOSCALE_API_SECRET=$EXOSCALE_API_SECRET$ \
   -n cluster-api-provider-exoscale-system
 ```
 

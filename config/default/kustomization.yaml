@@ -9,5 +9,5 @@ resources:
 
 images:
   - name: controller:latest
-    newName: ghcr.io/lucj/exoscale-capi-provider  # overridden by make deploy IMG=...
+    newName: ghcr.io/lucj/exoscale-capi-provider
     newTag: latest

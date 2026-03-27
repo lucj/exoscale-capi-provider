@@ -36,7 +36,7 @@ spec:
       instanceType: standard.medium   # 2 vCPU / 4 GB — minimum for control plane
       template: "Linux Ubuntu 22.04 LTS 64-bit"
       diskSize: 50
-      sshKey: SSH_KEY_ID
+      sshKey: SSH_KEY
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
@@ -71,7 +71,7 @@ spec:
       instanceType: standard.medium
       template: "Linux Ubuntu 22.04 LTS 64-bit"
       diskSize: 50
-      sshKey: SSH_KEY_ID
+      sshKey: SSH_KEY
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate

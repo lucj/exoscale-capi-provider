@@ -66,11 +66,13 @@ func (r *ExoscaleClusterReconciler) reconcileNormal(ctx context.Context, cluster
 
 	if err := r.reconcileSecurityGroups(ctx, cluster, cc); err != nil {
 		setCondition(cluster, infrav1.SecurityGroupsReadyCondition, corev1.ConditionFalse, "ReconcileFailed", err.Error())
+		setCondition(cluster, clusterv1.ReadyCondition, corev1.ConditionFalse, "ReconcileFailed", err.Error())
 		return ctrl.Result{}, err
 	}
 
 	if err := r.reconcileEIP(ctx, cluster, cc); err != nil {
 		setCondition(cluster, infrav1.EIPReadyCondition, corev1.ConditionFalse, "ReconcileFailed", err.Error())
+		setCondition(cluster, clusterv1.ReadyCondition, corev1.ConditionFalse, "ReconcileFailed", err.Error())
 		return ctrl.Result{}, err
 	}
 
@@ -94,6 +96,9 @@ func (r *ExoscaleClusterReconciler) reconcileNormal(ctx context.Context, cluster
 
 	setCondition(cluster, infrav1.SecurityGroupsReadyCondition, corev1.ConditionTrue, "Ready", "Security groups are ready")
 	setCondition(cluster, infrav1.EIPReadyCondition, corev1.ConditionTrue, "Ready", "Elastic IP is ready")
+	// Set the standard CAPI Ready condition so the v1beta2 Cluster controller
+	// picks up infrastructure readiness and sets Cluster.status.infrastructureReady.
+	setCondition(cluster, clusterv1.ReadyCondition, corev1.ConditionTrue, "Ready", "Cluster infrastructure is ready")
 	cluster.Status.Ready = true
 
 	return ctrl.Result{}, nil

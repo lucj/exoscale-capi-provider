@@ -1,4 +1,4 @@
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: my-cluster
@@ -8,11 +8,11 @@ spec:
     pods:      { cidrBlocks: ["10.244.0.0/16"] }
     services:  { cidrBlocks: ["10.96.0.0/12"] }
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: ExoscaleCluster
     name: my-cluster
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: my-cluster-control-plane
 ---
@@ -34,30 +34,76 @@ spec:
     spec:
       zone: ch-gva-2
       instanceType: standard.medium   # 2 vCPU / 4 GB — minimum for control plane
-      template: "Linux Ubuntu 22.04 LTS 64-bit"
+      template: "Linux Ubuntu 24.04 LTS 64-bit"
       diskSize: 50
-      sshKey: SSH_KEY
+      sshKey: "SSH_KEY"
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: my-cluster-control-plane
   namespace: default
 spec:
   replicas: 1
-  version: v1.28.0
+  version: v1.35.3
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: ExoscaleMachineTemplate
-      name: my-cluster-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: ExoscaleMachineTemplate
+        name: my-cluster-control-plane
   kubeadmConfigSpec:
+    preKubeadmCommands:
+      # Load required kernel modules
+      - |
+        cat > /etc/modules-load.d/k8s.conf << 'EOF'
+        overlay
+        br_netfilter
+        EOF
+      - modprobe overlay
+      - modprobe br_netfilter
+      # Enable IP forwarding and bridge netfilter (required by Kubernetes)
+      - |
+        cat > /etc/sysctl.d/k8s.conf << 'EOF'
+        net.bridge.bridge-nf-call-iptables  = 1
+        net.bridge.bridge-nf-call-ip6tables = 1
+        net.ipv4.ip_forward                 = 1
+        EOF
+      - sysctl --system
+      # Install containerd
+      - apt-get update -qq
+      - apt-get install -yq containerd apt-transport-https ca-certificates curl gpg
+      # Configure containerd with systemd cgroup driver (required for Kubernetes)
+      - mkdir -p /etc/containerd
+      - containerd config default > /etc/containerd/config.toml
+      - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+      - systemctl restart containerd
+      - systemctl enable containerd
+      # Add Kubernetes 1.35 apt repository
+      - mkdir -p /etc/apt/keyrings
+      - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      - echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+      - apt-get update -qq
+      # Install kubeadm, kubelet, kubectl and pin their versions
+      - apt-get install -yq kubelet kubeadm kubectl
+      - apt-mark hold kubelet kubeadm kubectl
+      - systemctl enable kubelet
+      # Exoscale EIPs are externally NAT'd — the VM cannot reach its own EIP
+      # without a loopback alias. kubeadm's upload-config phase connects to the
+      # controlPlaneEndpoint (the EIP) from within the VM; without this alias
+      # that connection times out. CAPI writes the kubeadm config before running
+      # any commands, so we extract the EIP from there.
+      - |
+        EIP=$(grep 'controlPlaneEndpoint:' /run/kubeadm/kubeadm.yaml 2>/dev/null \
+              | head -1 | awk '{print $2}' | cut -d: -f1)
+        if [ -n "$EIP" ]; then
+          ip addr add ${EIP}/32 dev lo label lo:kube
+          echo "Loopback alias ${EIP} added so kubeadm can reach the EIP locally"
+        fi
     initConfiguration:
-      nodeRegistration:
-        kubeletExtraArgs: { cloud-provider: external }
+      nodeRegistration: {}
     joinConfiguration:
-      nodeRegistration:
-        kubeletExtraArgs: { cloud-provider: external }
+      nodeRegistration: {}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: ExoscaleMachineTemplate
@@ -69,11 +115,11 @@ spec:
     spec:
       zone: ch-gva-2
       instanceType: standard.medium
-      template: "Linux Ubuntu 22.04 LTS 64-bit"
+      template: "Linux Ubuntu 24.04 LTS 64-bit"
       diskSize: 50
-      sshKey: SSH_KEY
+      sshKey: "SSH_KEY"
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: my-cluster-workers
@@ -81,11 +127,39 @@ metadata:
 spec:
   template:
     spec:
+      preKubeadmCommands:
+        - |
+          cat > /etc/modules-load.d/k8s.conf << 'EOF'
+          overlay
+          br_netfilter
+          EOF
+        - modprobe overlay
+        - modprobe br_netfilter
+        - |
+          cat > /etc/sysctl.d/k8s.conf << 'EOF'
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward                 = 1
+          EOF
+        - sysctl --system
+        - apt-get update -qq
+        - apt-get install -yq containerd apt-transport-https ca-certificates curl gpg
+        - mkdir -p /etc/containerd
+        - containerd config default > /etc/containerd/config.toml
+        - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+        - systemctl restart containerd
+        - systemctl enable containerd
+        - mkdir -p /etc/apt/keyrings
+        - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        - echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+        - apt-get update -qq
+        - apt-get install -yq kubelet kubeadm kubectl
+        - apt-mark hold kubelet kubeadm kubectl
+        - systemctl enable kubelet
       joinConfiguration:
-        nodeRegistration:
-          kubeletExtraArgs: { cloud-provider: external }
+        nodeRegistration: {}
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: my-cluster-workers
@@ -99,13 +173,13 @@ spec:
   template:
     spec:
       clusterName: my-cluster
-      version: v1.28.0
+      version: v1.35.3
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: my-cluster-workers
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: ExoscaleMachineTemplate
         name: my-cluster-workers

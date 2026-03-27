@@ -1,3 +1,8 @@
+-----------
+--- WIP ---
+-----------
+
+
 # Cluster API Provider Exoscale
 
 Kubernetes Cluster API **infrastructure provider** for [Exoscale](https://www.exoscale.com/).
@@ -43,15 +48,16 @@ Because this provider is not published to the clusterctl registry, the kubeadm p
 
 ```bash
 clusterctl init --bootstrap kubeadm --control-plane kubeadm
-kubectl get pods -A | grep capi  # wait until all Running
 ```
 
 ### 2 — Add Exoscale credentials
 
 ```bash
+kubectl create ns cluster-api-provider-exoscale-system
+
 kubectl create secret generic exoscale-credentials \
-  --from-literal=EXOSCALE_API_KEY=$EXOSCALE_API_KEY$ \
-  --from-literal=EXOSCALE_API_SECRET=$EXOSCALE_API_SECRET$ \
+  --from-literal=EXOSCALE_API_KEY=$EXOSCALE_API_KEY \
+  --from-literal=EXOSCALE_API_SECRET=$EXOSCALE_API_SECRET \
   -n cluster-api-provider-exoscale-system
 ```
 
@@ -59,34 +65,33 @@ kubectl create secret generic exoscale-credentials \
 
 The image is published to GHCR automatically on every push to `main`. Open `config/default/kustomization.yaml` and replace the `newName` / `newTag` fields with your image reference, then apply:
 
-```yaml
-# config/default/kustomization.yaml  (edit before applying)
-images:
-  - name: controller
-    newName: ghcr.io/<owner>/cluster-api-provider-exoscale
-    newTag: latest
-```
-
 ```bash
 kubectl apply -k config/default
-kubectl get pods -n cluster-api-provider-exoscale-system  # wait until Running
+kubectl get pods -n cluster-api-provider-exoscale-system
 ```
 
 ### 4 — Create a workload cluster
 
-Modify the manifest in `examples/my-cluster.yaml`, replacing `SSH_KEY_ID` with your values, then apply it.
+Modify the manifest in `examples/my-cluster.yaml`, replacing `SSH_KEY` with the name of your ssh key, then apply it.
 
 ```bash
 kubectl apply -f examples/my-cluster.yaml
 ```
 
-### 5 — Watch provisioning (~5–10 min)
+Then, watch provisioning (~5–10 min)
 
 ```bash
-kubectl get cluster,exoscalecluster,machines -n default -w
+kubectl get cluster,exoscalecluster,machines
 ```
 
-Expected sequence: `ExoscaleCluster` becomes ready (security groups + EIP created) → control-plane VM boots and gets the EIP attached → kubeadm initialises → workers join → `Cluster` becomes `Ready=true`. Check provider logs if something seems stuck:
+Expected sequence:
+- `ExoscaleCluster` becomes ready (security groups + EIP created)
+- control-plane VM boots and gets the EIP attached
+- kubeadm initialises
+- workers join
+- `Cluster` becomes `Ready=true`
+
+Check provider logs if something seems stuck:
 
 ```bash
 kubectl logs -n cluster-api-provider-exoscale-system \
@@ -95,16 +100,30 @@ kubectl logs -n cluster-api-provider-exoscale-system \
 
 ### 6 — Access the cluster
 
+Get kubeconfig either:
+
+- using generated secret
+
+```bash
+kubectl get secret my-cluster-kubeconfig -o jsonpath='{.data.value}' | base64 -d > my-cluster.kubeconfig
+```
+
+- or using clusterctl
+
 ```bash
 clusterctl get kubeconfig my-cluster > my-cluster.kubeconfig
+```
+
+Then, check the Nodes of the workload cluster:
+
+```bash
 kubectl --kubeconfig=my-cluster.kubeconfig get nodes
 ```
 
-If nodes stay `NotReady`, install a CNI plugin. Example with Flannel:
+If nodes stay `NotReady`, install a CNI plugin. Example with Flannel (will automate this later on):
 
 ```bash
-kubectl --kubeconfig=my-cluster.kubeconfig apply \
-  -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+kubectl --kubeconfig=my-cluster.kubeconfig apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 ```
 
 > Flannel uses VXLAN (UDP 8472). If overlay traffic is blocked, add that port to the node security group in the Exoscale portal.
@@ -112,7 +131,7 @@ kubectl --kubeconfig=my-cluster.kubeconfig apply \
 ### 7 — Cleanup
 
 ```bash
-kubectl delete cluster my-cluster   # removes all Exoscale resources (VMs, SGs, EIP)
+kubectl delete cluster my-cluster
 ```
 
 ---
@@ -179,7 +198,7 @@ go run sigs.k8s.io/controller-tools/cmd/controller-gen \
   object:headerFile="hack/boilerplate.go.txt" paths="./..."
 ```
 
-The container image is built and pushed to GHCR automatically by the CI workflow on every push to `main`.
+The container image is built and pushed to GHCR by the CI workflow on every push to `main`.
 
 ### Project structure
 

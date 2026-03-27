@@ -133,8 +133,6 @@ spec:
                 ready:
                   description: Ready indicates that the machine is ready.
                   type: boolean
-              required:
-                - ready
               type: object
           type: object
       served: true

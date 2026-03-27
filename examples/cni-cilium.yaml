@@ -1,0 +1,22 @@
+# Apply this file once to the management cluster AFTER running generate-cilium-cm.sh.
+#
+# Any workload cluster labelled "cni: cilium" will automatically receive Cilium
+# as soon as its API server becomes reachable — no manual step required.
+#
+#   ./examples/generate-cilium-cm.sh       # generates the cilium-cni ConfigMap
+#   kubectl apply -f examples/cni-cilium.yaml
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: cilium
+  namespace: default
+spec:
+  # ApplyOnce: applied exactly once per cluster; won't fight with upgrades.
+  strategy: ApplyOnce
+  clusterSelector:
+    matchLabels:
+      cni: cilium
+  resources:
+  - name: cilium-cni
+    kind: ConfigMap

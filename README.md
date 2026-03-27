@@ -160,7 +160,7 @@ For production clusters, restrict etcd and kubelet ports to internal CIDRs. CNI-
 
 - Go 1.23+
 - [controller-gen](https://github.com/kubernetes-sigs/controller-tools) — regenerates CRDs and deepcopy methods after API type changes
-- kubectl + kustomize
+- kubectl
 
 ### Common commands
 

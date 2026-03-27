@@ -3,7 +3,7 @@ namespace: cluster-api-provider-exoscale-system
 namePrefix: cluster-api-provider-exoscale-
 
 resources:
-  # - ../crd/bases
+  - ../crd
   - ../rbac
   - ../manager
 

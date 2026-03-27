@@ -1,0 +1,143 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    cluster.x-k8s.io/v1beta1: v1beta1
+    cluster.x-k8s.io/v1beta2: v1beta1
+  name: exoscalemachines.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: ExoscaleMachine
+    listKind: ExoscaleMachineList
+    plural: exoscalemachines
+    singular: exoscalemachine
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.ready
+          name: READY
+          type: string
+        - jsonPath: .status.instanceID
+          name: INSTANCE
+          type: string
+        - jsonPath: .spec.zone
+          name: ZONE
+          type: string
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1beta1
+      schema:
+        openAPIV3Schema:
+          description: ExoscaleMachine is the Schema for the exoscalemachines API.
+          properties:
+            apiVersion:
+              description: APIVersion defines the versioned schema of this representation of an object.
+              type: string
+            kind:
+              description: Kind is a string value representing the REST resource this object represents.
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: ExoscaleMachineSpec defines the desired state of ExoscaleMachine.
+              properties:
+                antiAffinityGroup:
+                  description: AntiAffinityGroup is the optional name or ID of an anti-affinity group.
+                  type: string
+                diskSize:
+                  description: DiskSize is the size of the instance disk in GB.
+                  format: int64
+                  type: integer
+                instanceType:
+                  description: InstanceType is the name or ID of the Exoscale instance type.
+                  type: string
+                ipv6:
+                  description: IPv6 enables IPv6 networking on the instance.
+                  type: boolean
+                providerID:
+                  description: ProviderID is the unique identifier of the instance in the format exoscale://<uuid>.
+                  type: string
+                sshKey:
+                  description: SSHKey is the name of the SSH key pair to use for the instance.
+                  type: string
+                template:
+                  description: Template is the name or ID of the Exoscale compute instance template.
+                  type: string
+                zone:
+                  description: Zone is the Exoscale zone where the instance will be created.
+                  type: string
+              required:
+                - diskSize
+                - instanceType
+                - sshKey
+                - template
+                - zone
+              type: object
+            status:
+              description: ExoscaleMachineStatus defines the observed state of ExoscaleMachine.
+              properties:
+                addresses:
+                  description: Addresses is a list of addresses associated with the instance.
+                  items:
+                    description: MachineAddress contains information for the node's address.
+                    properties:
+                      address:
+                        description: The machine address.
+                        type: string
+                      type:
+                        description: Machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS, InternalDNS.
+                        type: string
+                    required:
+                      - address
+                      - type
+                    type: object
+                  type: array
+                conditions:
+                  description: Conditions is a list of conditions for the ExoscaleMachine.
+                  items:
+                    description: Condition defines an observation of a Cluster API resource operational state.
+                    properties:
+                      lastTransitionTime:
+                        description: Last time the condition transitioned from one status to another.
+                        format: date-time
+                        type: string
+                      message:
+                        description: A human readable message indicating details about the transition.
+                        type: string
+                      reason:
+                        description: The reason for the condition's last transition in CamelCase.
+                        type: string
+                      severity:
+                        description: Severity provides an explicit classification of Reason code.
+                        type: string
+                      status:
+                        description: Status of the condition, one of True, False, Unknown.
+                        type: string
+                      type:
+                        description: Type of condition in CamelCase.
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - status
+                      - type
+                    type: object
+                  type: array
+                instanceID:
+                  description: InstanceID is the ID of the Exoscale instance.
+                  type: string
+                ready:
+                  description: Ready indicates that the machine is ready.
+                  type: boolean
+              required:
+                - ready
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
